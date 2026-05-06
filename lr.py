@@ -116,37 +116,37 @@ def run_ablation(train_texts, train_labels, dev_texts, dev_labels, test_texts, t
 
     ablation_results = {}
 
-    # model 1 BPE counts only
+    # model 1 - BPE counts only
     lr = LogisticRegression(C=best_c, max_iter=1000, random_state=42)
     lr.fit(tr_bpe, train_labels)
     dev_acc = accuracy_score(dev_labels, lr.predict(dv_bpe))
     test_acc = accuracy_score(test_labels, lr.predict(te_bpe))
     ablation_results["BPE only"] = (dev_acc, test_acc)
-    print(f"  BPE only  dev={dev_acc:.4f}  test={test_acc:.4f}")
+    print(f"BPE only  dev={dev_acc:.4f}  test={test_acc:.4f}")
 
-    # model 2 BPE + TF-IDF
+    # model 2 - BPE + TF-IDF
     lr = LogisticRegression(C=best_c, max_iter=1000, random_state=42)
     lr.fit(hstack([tr_bpe, tr_tfidf]), train_labels)
     dev_acc = accuracy_score(dev_labels, lr.predict(hstack([dv_bpe, dv_tfidf])))
     test_acc = accuracy_score(test_labels, lr.predict(hstack([te_bpe, te_tfidf])))
     ablation_results["BPE + TF-IDF"] = (dev_acc, test_acc)
-    print(f"  BPE + TF-IDF  dev={dev_acc:.4f}  test={test_acc:.4f}")
+    print(f"BPE + TF-IDF  dev={dev_acc:.4f}  test={test_acc:.4f}")
 
-    # model 3  BPE + char ngrams
+    # model 3 - BPE + char ngrams
     lr = LogisticRegression(C=best_c, max_iter=1000, random_state=42)
     lr.fit(hstack([tr_bpe, tr_char]), train_labels)
     dev_acc = accuracy_score(dev_labels, lr.predict(hstack([dv_bpe, dv_char])))
     test_acc = accuracy_score(test_labels, lr.predict(hstack([te_bpe, te_char])))
     ablation_results["BPE + char ngrams"] = (dev_acc, test_acc)
-    print(f"  BPE + char ngrams  dev={dev_acc:.4f}  test={test_acc:.4f}")
+    print(f"BPE + char ngrams  dev={dev_acc:.4f}  test={test_acc:.4f}")
 
-    # model 4  all features
+    # model 4 - all features
     lr = LogisticRegression(C=best_c, max_iter=1000, random_state=42)
     lr.fit(hstack([tr_bpe, tr_tfidf, tr_char]), train_labels)
     dev_acc = accuracy_score(dev_labels, lr.predict(hstack([dv_bpe, dv_tfidf, dv_char])))
     test_acc = accuracy_score(test_labels, lr.predict(hstack([te_bpe, te_tfidf, te_char])))
     ablation_results["BPE + TF-IDF + char ngrams"] = (dev_acc, test_acc)
-    print(f"  BPE + TF-IDF + char ngrams  dev={dev_acc:.4f}  test={test_acc:.4f}")
+    print(f"BPE + TF-IDF + char ngrams  dev={dev_acc:.4f}  test={test_acc:.4f}")
 
     return ablation_results
 
@@ -177,7 +177,7 @@ def tune_lr(train_texts, train_labels, dev_texts, dev_labels, test_texts, test_l
             lr.fit(train_vecs, train_labels)
             dev_acc = accuracy_score(dev_labels, lr.predict(dev_vecs))
             all_runs.append((ngram_range, c, dev_acc))
-            print(f"  C={c}  dev_acc={dev_acc:.4f}")
+            print(f"C={c} dev_acc={dev_acc:.4f}")
 
             if dev_acc > best_acc:
                 best_acc = dev_acc
@@ -188,7 +188,9 @@ def tune_lr(train_texts, train_labels, dev_texts, dev_labels, test_texts, test_l
     train_vecs, dev_vecs, test_vecs = build_full_features(train_texts, dev_texts, test_texts, bpe, best_ngram, vocab_size)
     best_lr = LogisticRegression(C=best_c, max_iter=1000, random_state=42)
     best_lr.fit(train_vecs, train_labels)
-    test_acc = accuracy_score(test_labels, best_lr.predict(test_vecs))
+    
+    test_preds = best_lr.predict(test_vecs)
+    test_acc = accuracy_score(test_labels, test_preds)
 
     print(f"\n{language_name} best settings: ngram={best_ngram}, C={best_c}")
     print(f"{language_name} dev acc: {best_acc:.4f}")
@@ -204,6 +206,7 @@ def tune_lr(train_texts, train_labels, dev_texts, dev_labels, test_texts, test_l
         "best_ngram": best_ngram,
         "best_dev_acc": best_acc,
         "best_test_acc": test_acc,
+        "test_preds": test_preds,
         "ablation": ablation,
     }
 
@@ -211,10 +214,10 @@ def tune_lr(train_texts, train_labels, dev_texts, dev_labels, test_texts, test_l
 # run everything
 
 print("===SWAHILI===")
-swa_lr= tune_lr(swa_train_texts, swa_train_labels, swa_dev_texts, swa_dev_labels, swa_test_texts, swa_test_labels, best_k=SWA_K, language_name="Swahili")
+swa_lr= tune_lr(swa_train_texts, swa_train_labels, swa_dev_texts,swa_dev_labels, swa_test_texts, swa_test_labels, best_k=SWA_K, language_name="Swahili")
 
 print("===TWI===")
-twi_lr = tune_lr(twi_train_texts, twi_train_labels, twi_dev_texts, twi_dev_labels, twi_test_texts, twi_test_labels, best_k=TWI_K, language_name="Twi")
+twi_lr = tune_lr(twi_train_texts, twi_train_labels,twi_dev_texts, twi_dev_labels, twi_test_texts, twi_test_labels, best_k=TWI_K, language_name="Twi")
 
 # final summary
 print("\n---Final results---")
@@ -296,53 +299,13 @@ def plot_lr_results(swa, twi):
 
 
 plot_lr_results(swa_lr, twi_lr)
-
-#ERROR ANALYSIS, ABOVE CODE DID NOT SAVE MODEL IN COLLAB NOTEBOOK HAVE TO RETRAIN BEST MODEL USING KNOWN RESULTS
-# swahili best: k=1500, ngram=(2,4), C=0.5
-# twi best: k=1000, ngram=(2,4), C=0.5
-bpe_swa = BPETokeniser()
-bpe_swa.train(swa_train_texts, num_merges=1500)
-vocab_size_swa = 1756
-
-swa_train_tokens = [bpe_swa.encode(t) for t in swa_train_texts]
-swa_test_tokens = [bpe_swa.encode(t) for t in swa_test_texts]
-
-tr_bpe, _, te_bpe = get_bpe_count_features(swa_train_tokens, swa_test_tokens, swa_test_tokens, vocab_size_swa)
-tr_tfidf, _, te_tfidf = get_tfidf_features(swa_train_texts, swa_test_texts, swa_test_texts, bpe_swa)
-tr_char, _, te_char = get_char_ngram_features(swa_train_texts, swa_test_texts, swa_test_texts, (2, 4))
-
-swa_train_features = hstack([tr_bpe, tr_tfidf, tr_char])
-swa_test_features = hstack([te_bpe, te_tfidf, te_char])
-
-swa_best_lr = LogisticRegression(C=0.5, max_iter=1000, random_state=42)
-swa_best_lr.fit(swa_train_features, swa_train_labels)
-swa_test_preds = swa_best_lr.predict(swa_test_features)
-#just making sure the model has same accuracy.
-print(f"swahili test acc: {accuracy_score(swa_test_labels, swa_test_preds):.4f}")
-#Retrain using functions
-bpe_twi = BPETokeniser()
-bpe_twi.train(twi_train_texts, num_merges=1000)
-vocab_size_twi = 1256
-
-twi_train_tokens = [bpe_twi.encode(t) for t in twi_train_texts]
-twi_test_tokens = [bpe_twi.encode(t) for t in twi_test_texts]
-
-tr_bpe, _, te_bpe = get_bpe_count_features(twi_train_tokens, twi_test_tokens, twi_test_tokens, vocab_size_twi)
-tr_tfidf, _, te_tfidf = get_tfidf_features(twi_train_texts, twi_test_texts, twi_test_texts, bpe_twi)
-tr_char, _, te_char = get_char_ngram_features(twi_train_texts, twi_test_texts, twi_test_texts, (2, 4))
-
-twi_train_features = hstack([tr_bpe, tr_tfidf, tr_char])
-twi_test_features = hstack([te_bpe, te_tfidf, te_char])
-
-twi_best_lr = LogisticRegression(C=0.5, max_iter=1000, random_state=42)
-twi_best_lr.fit(twi_train_features, twi_train_labels)
-twi_test_preds = twi_best_lr.predict(twi_test_features)
-print(f"twi test acc: {accuracy_score(twi_test_labels, twi_test_preds):.4f}")
-
+#Swahili :k= 1500   n=(2, 4)    c= 0.5   
+#Twi  : k= 1000   n=(2, 4)    c=0.5       
 # helper to sort by count
 def get_count(item):
     return item[1]
 
+#ERROR ANALYSIS 
 def error_analysis(test_texts, test_labels, test_preds, language_name):
     print(f"\n{language_name} error analysis")
 
@@ -372,7 +335,8 @@ def error_analysis(test_texts, test_labels, test_preds, language_name):
                 print(f" Sentence: - {text}")
 
 
-error_analysis(swa_test_texts, swa_test_labels, swa_test_preds, "Swahili")
-error_analysis(twi_test_texts, twi_test_labels, twi_test_preds, "Twi")
+error_analysis(swa_test_texts, swa_test_labels, swa_lr["test_preds"], "Swahili")
+error_analysis(twi_test_texts, twi_test_labels, twi_lr["test_preds"], "Twi")
+
 
 
