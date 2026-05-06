@@ -20,7 +20,7 @@ twi_test_labels, twi_test_texts = load_json('data/twi/test.jsonl')
 
 # Store tokenisers in a dict
 tokenisers = {}
-k_values = [50, 100, 200, 300, 500, 750, 1000]
+k_values = [100, 300, 500]
 
 for lang, train_texts in [("swa", swa_train_texts), ("twi", twi_train_texts)]:
     tokenisers[lang] = {}

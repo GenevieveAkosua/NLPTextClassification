@@ -89,13 +89,22 @@ def build_full_features(train_texts, dev_texts, test_texts, bpe, ngram_range, vo
     test_tokens = [bpe.encode(t) for t in test_texts]
 
     tr_bpe, dv_bpe, te_bpe = get_bpe_count_features(train_tokens, dev_tokens, test_tokens, vocab_size)
-    tr_tfidf, dv_tfidf, te_tfidf = get_tfidf_features(train_texts, dev_texts, test_texts, bpe)
-    tr_char, dv_char, te_char = get_char_ngram_features(train_texts, dev_texts, test_texts, ngram_range)
+	# build and keep the vectorizers
+    train_strings = encode_as_string(train_texts, bpe)
+    tfidf_vec = TfidfVectorizer()
+    tr_tfidf = tfidf_vec.fit_transform(train_strings)
+    dv_tfidf = tfidf_vec.transform(encode_as_string(dev_texts,  bpe))
+    te_tfidf = tfidf_vec.transform(encode_as_string(test_texts, bpe))
+
+    char_vec = CountVectorizer(analyzer='char', ngram_range=ngram_range)
+    tr_char  = char_vec.fit_transform(train_texts)
+    dv_char  = char_vec.transform(dev_texts)
+    te_char  = char_vec.transform(test_texts)
 
     train_combined = hstack([tr_bpe, tr_tfidf, tr_char])
-    dev_combined = hstack([dv_bpe, dv_tfidf, dv_char])
-    test_combined = hstack([te_bpe, te_tfidf, te_char])
-    return train_combined, dev_combined, test_combined
+    dev_combined   = hstack([dv_bpe, dv_tfidf, dv_char])
+    test_combined  = hstack([te_bpe, te_tfidf, te_char])
+    return train_combined, dev_combined, test_combined, tfidf_vec, char_vec
 
 
 # ablation
@@ -167,10 +176,11 @@ def tune_lr(train_texts, train_labels, dev_texts, dev_labels, test_texts, test_l
     best_acc = 0
     best_c = None
     best_ngram = None
+    best_tfidf_vec = None
+    best_char_vec = None
 
     for ngram_range in NGRAM_RANGES:
-        print(f"\nngram_range={ngram_range}")
-        train_vecs, dev_vecs, test_vecs = build_full_features(train_texts, dev_texts, test_texts, bpe, ngram_range, vocab_size)
+        train_vecs, dev_vecs, test_vecs, tfidf_vec, char_vec = build_full_features(train_texts, dev_texts, test_texts, bpe, ngram_range, vocab_size)
 
         for c in C_VALUES:
             lr = LogisticRegression(C=c, max_iter=1000, random_state=42)
@@ -183,11 +193,14 @@ def tune_lr(train_texts, train_labels, dev_texts, dev_labels, test_texts, test_l
                 best_acc = dev_acc
                 best_c = c
                 best_ngram = ngram_range
+                best_tfidf_vec = tfidf_vec
+                best_char_vec = char_vec
 
     # build best lr model with best settings and evaluate on test once
-    train_vecs, dev_vecs, test_vecs = build_full_features(train_texts, dev_texts, test_texts, bpe, best_ngram, vocab_size)
+    train_vecs, dev_vecs, test_vecs, _, _ = build_full_features(train_texts, dev_texts, test_texts, bpe, best_ngram, vocab_size)
     best_lr = LogisticRegression(C=best_c, max_iter=1000, random_state=42)
     best_lr.fit(train_vecs, train_labels)
+
     
     test_preds = best_lr.predict(test_vecs)
     test_acc = accuracy_score(test_labels, test_preds)
@@ -197,7 +210,6 @@ def tune_lr(train_texts, train_labels, dev_texts, dev_labels, test_texts, test_l
     print(f"{language_name} test acc: {test_acc:.4f}")
 
     ablation = run_ablation(train_texts, train_labels, dev_texts, dev_labels, test_texts, test_labels, best_k, best_c, best_ngram, language_name, bpe, vocab_size)
-
     return {
         "language": language_name,
         "all_runs": all_runs,
@@ -208,6 +220,10 @@ def tune_lr(train_texts, train_labels, dev_texts, dev_labels, test_texts, test_l
         "best_test_acc": test_acc,
         "test_preds": test_preds,
         "ablation": ablation,
+        "model": best_lr,
+        "tfidf_vec": best_tfidf_vec,
+        "char_vec": best_char_vec,
+        "vocab_size": vocab_size
     }
 
 
@@ -306,18 +322,52 @@ def get_count(item):
     return item[1]
 
 #ERROR ANALYSIS 
-def error_analysis(test_texts, test_labels, test_preds, language_name):
-    print(f"\n{language_name} error analysis")
+def show_top_features_combined(model, tfidf_vec, char_vec, vocab_size, class_a, class_b, top_n=8):
+    """Show the top character ngram features for two intents"""
+
+    classes = list(model.classes_)
+    idx_a = classes.index(class_a)
+    idx_b = classes.index(class_b)
+
+    # Character ngram features start after the bpe and tfidf blocks
+    char_offset = vocab_size + len(tfidf_vec.vocabulary_)
+    char_vocab = {v: k for k, v in char_vec.vocabulary_.items()}
+    char_coef_a = model.coef_[idx_a][char_offset:]
+    char_coef_b = model.coef_[idx_b][char_offset:]
+    top_a = [char_vocab[i] for i in sorted(range(len(char_coef_a)), key=lambda i: char_coef_a[i], reverse=True)[:top_n]]
+    top_b = [char_vocab[i] for i in sorted(range(len(char_coef_b)), key=lambda i: char_coef_b[i], reverse=True)[:top_n]]
+
+    print(f"Top character ngrams for '{class_a}': {top_a}")
+    print(f"Top character ngrams for '{class_b}: {top_b}")
+
+    overlap = set(top_a) & set(top_b)
+    if overlap:
+        print(f"Overlapping features that are the course of confusion: {overlap}")
+
+def error_analysis(test_texts, test_labels, result_dict, examples_per_pair=3):
+    """ Identify the three intent pairs most frequently confused by your best model
+on each language"""
+
+    language_name = result_dict["langauge"]
+    test_preds = result_dict["test_preds"]
+    model = result_dict["model"]
+    tfidf_vec = result_dict["tfidf_vec"]
+    char_vec = result_dict["char_vec"]
+    vocab_vec = result_dict["vocab_size"]
+
+    print(f"\n{'='*55}")
+    print(f"  {language_name} Error Analysis")
+    print(f"{'='*55}")
 
     # find all mistakes
-    mistakes = []
-    for text, true, pred in zip(test_texts, test_labels, test_preds):
-        if true != pred:
-            mistakes.append((true, pred, text))
-
+    mistakes = [
+    (true, pred, text)
+        for text, true, pred in zip(test_texts, test_labels, test_preds)
+        if true != pred
+    ]
     # count which pairs are most confused
     pair_counts = {}
-    for true, pred, text in mistakes:
+    for true, pred, _ in mistakes:
         pair = (true, pred)
         pair_counts[pair] = pair_counts.get(pair, 0) + 1
 
@@ -327,16 +377,20 @@ def error_analysis(test_texts, test_labels, test_preds, language_name):
     top3 = pair_counts_list[:3]
 
     # print results
-    print(f"\ntop 3 confused pairs:")
+    print(f"\nTop 3 confused pairs:\n")
     for (true, pred), count in top3:
-        print(f"\n True label: {true} versus predicted: {pred} occured :({count} times)")
-        for true2, pred2, text in mistakes:
-            if true2 == true and pred2 == pred:
-                print(f" Sentence: - {text}")
+        print(f"  TRUE: '{true}'  →  PREDICTED: '{pred}'  ({count} times)")
 
+        examples = [text for t, p, text in mistakes if t == true and p == pred][:examples_per_pair]
+        print(f"\n  Misclassified examples:")
+        for ex in examples:
+            print(f"    - \"{ex}\"")
 
-error_analysis(swa_test_texts, swa_test_labels, swa_lr["test_preds"], "Swahili")
-error_analysis(twi_test_texts, twi_test_labels, twi_lr["test_preds"], "Twi")
+        print(f"\n  Token distributions (char n-gram coefficients):")
+        show_top_features_combined(model, tfidf_vec, char_vec, vocab_size, true, pred)
+        print()
 
+error_analysis(swa_test_texts, swa_test_labels, swa_lr)
+error_analysis(twi_test_texts, twi_test_labels, twi_lr)
 
 
