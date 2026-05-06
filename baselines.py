@@ -118,8 +118,8 @@ def tune_and_evaluate(train_texts, train_labels, dev_texts, dev_labels, test_tex
 	"""Train the Unigram and NGram Baselines on A Logisic Regression Model"""
 
 	# Hyperparameters for c-regularisation and different ngram combinations
-	n_values = [(1, 3), (2, 2), (2, 3), (2, 4), (3, 5), (3, 6)] if is_ngram else [None]
-	c_values = [0.001, 0.01, 0.1, 0.5, 1.0, 5.0, 10.0]
+	n_values = [(2, 3), (2, 4), (3, 5)] if is_ngram else [None]
+	c_values = [0.01, 0.1, 0.5, 1.0, 5.0, 10.0]
 
 	best_acc = 0
 	best_c = None
@@ -127,6 +127,7 @@ def tune_and_evaluate(train_texts, train_labels, dev_texts, dev_labels, test_tex
 	best_curve = []
 	best_model = None
 	best_test_vec = None
+	best_feat_extr = None
 
 	# Do a grid search over the n values and the c values
 	for n in n_values:
@@ -155,6 +156,7 @@ def tune_and_evaluate(train_texts, train_labels, dev_texts, dev_labels, test_tex
 				best_n = n
 				best_model = classifier
 				best_test_vec = test_vec
+				best_feat_extr = feat_extr
 				n_is_best = True
 
 		if n_is_best:
@@ -168,7 +170,72 @@ def tune_and_evaluate(train_texts, train_labels, dev_texts, dev_labels, test_tex
 	print(f"dev acc:  {best_acc:.4f}")
 	print(f"test acc: {test_accuracy:.4f}\n")
 
-	return best_curve, c_values
+	return best_curve, c_values, test_pred, best_model, best_feat_extr
+
+def show_top_features(model, feat_extr, class_a, class_b, top_n=8):
+	"""Print the most discriminative features for two intents."""
+	classes    = list(model.classes_)
+	vocab      = feat_extr.vocabulary
+	idx_a      = classes.index(class_a)
+	idx_b      = classes.index(class_b)
+	coef_a     = model.coef_[idx_a]
+	coef_b     = model.coef_[idx_b]
+
+	# Top features strongly associated with each intent
+	top_a_idx  = sorted(range(len(coef_a)), key=lambda i: coef_a[i], reverse=True)[:top_n]
+	top_b_idx  = sorted(range(len(coef_b)), key=lambda i: coef_b[i], reverse=True)[:top_n]
+	top_a = [vocab[i] for i in top_a_idx]
+	top_b = [vocab[i] for i in top_b_idx]
+
+	print(f"  Top features for '{class_a}': {top_a}")
+	print(f"  Top features for '{class_b}': {top_b}")
+
+	# Highlight any overlap — shared features are a likely source of confusion
+	overlap = set(top_a) & set(top_b)
+	if overlap:
+		print(f"  Overlapping features (source of confusion): {overlap}")
+
+
+def error_analysis(test_texts, test_labels, test_preds, model, feat_extr, 
+                   language_name, examples_per_pair=3):
+	print(f"\n{'='*55}")
+	print(f"  {language_name} Error Analysis")
+	print(f"{'='*55}")
+
+    # Collect all misclassified examples
+	mistakes = [
+		(true, pred, text)
+		for text, true, pred in zip(test_texts, test_labels, test_preds)
+		if true != pred
+	]
+
+    # Count confused pairs and sort by frequency
+	pair_counts = {}
+	for true, pred, text in mistakes:
+		pair = (true, pred)
+		pair_counts[pair] = pair_counts.get(pair, 0) + 1
+
+	top3 = sorted(pair_counts.items(), key=lambda x: x[1], reverse=True)[:3]
+
+	print(f"\nTop 3 confused pairs:\n")
+
+	for (true, pred), count in top3:
+		print(f"  TRUE: '{true}'  →  PREDICTED: '{pred}'  ({count} times)")
+
+		# (i) Quote 2-3 misclassified examples
+		examples = [
+			text for t, p, text in mistakes
+			if t == true and p == pred
+		][:examples_per_pair]
+
+		print(f"\n  Misclassified examples:")
+		for ex in examples:
+			print(f"    - \"{ex}\"")
+
+		# (ii) Token distributions the model learned
+		print(f"\n  Token distributions (model coefficients):")
+		show_top_features(model, feat_extr, true, pred)
+		print()
 
 
 # Load the data for the Swahili dataset
@@ -182,20 +249,23 @@ twi_dev_labels, twi_dev_texts = load_json('data/twi/dev.jsonl')
 twi_test_labels, twi_test_texts = load_json('data/twi/test.jsonl')
 
 ### Unigram Model ###
-
 print("Swahili Unigram Model")
-curve_1, c_vals = tune_and_evaluate(swa_train_texts, swa_train_labels, swa_dev_texts, swa_dev_labels, swa_test_texts, swa_test_labels, is_ngram=False)
+curve_1, c_vals, swa_uni_preds, swa_uni_model, swa_uni_feat = tune_and_evaluate(swa_train_texts, swa_train_labels, swa_dev_texts, swa_dev_labels,swa_test_texts, swa_test_labels, is_ngram=False)
 
 print("Twi Unigram Model")
-curve_2, _ = tune_and_evaluate(twi_train_texts, twi_train_labels, twi_dev_texts, twi_dev_labels, twi_test_texts, twi_test_labels, is_ngram=False)
+curve_2, _, twi_uni_preds, twi_uni_model, twi_uni_feat = tune_and_evaluate(twi_train_texts, twi_train_labels, twi_dev_texts, twi_dev_labels, twi_test_texts, twi_test_labels, is_ngram=False)
 
-### Ngram Model ###
+### N-gram Model ###
+print("Swahili N-gram Model")
+curve_3, _, swa_ngram_preds, swa_ngram_model, swa_ngram_feat = tune_and_evaluate(swa_train_texts, swa_train_labels, swa_dev_texts, swa_dev_labels, swa_test_texts, swa_test_labels)
 
-print("Swahili Ngram Model")
-curve_3, _ = tune_and_evaluate(swa_train_texts, swa_train_labels, swa_dev_texts, swa_dev_labels, swa_test_texts, swa_test_labels)
+print("Twi N-gram Model")
+curve_4, _, twi_ngram_preds, twi_ngram_model, twi_ngram_feat = tune_and_evaluate(twi_train_texts, twi_train_labels, twi_dev_texts, twi_dev_labels,twi_test_texts, twi_test_labels)
 
-print("Twi Ngram Model")
-curve_4, _ = tune_and_evaluate(twi_train_texts, twi_train_labels, twi_dev_texts, twi_dev_labels, twi_test_texts, twi_test_labels)
+### Error Analysis — run on your best model per language ###
+error_analysis(swa_test_texts, swa_test_labels, swa_ngram_preds,swa_ngram_model, swa_ngram_feat, "Swahili")
+
+error_analysis(twi_test_texts, twi_test_labels, twi_ngram_preds, twi_ngram_model, twi_ngram_feat, "Twi")
 
 # plot the results
 plt.figure(figsize=(8, 5))
