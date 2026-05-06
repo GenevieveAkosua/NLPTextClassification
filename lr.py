@@ -336,7 +336,7 @@ def show_top_features_combined(model, tfidf_vec, char_vec, vocab_size, class_a, 
     overlap = set(top_a) & set(top_b)
     if overlap:
         print(f"Overlapping features that are the course of confusion: {overlap}")
-
+#ERROR ANALYSIS 
 def error_analysis(test_texts, test_labels, result_dict, examples_per_pair=3):
     """ Identify the three intent pairs most frequently confused"""
 
@@ -392,4 +392,4 @@ plot_lr_results(swa_lr, twi_lr)
 def get_count(item):
     return item[1]
 
-#ERROR ANALYSIS 
+
