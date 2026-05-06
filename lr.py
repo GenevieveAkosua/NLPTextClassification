@@ -53,7 +53,7 @@ def get_bpe_count_features(train_tokens, dev_tokens, test_tokens, vocab_size):
 
 
 def encode_as_string(texts, bpe):
-    """Convert raw sentences into strings of BPE token IDs for TF-IDF. Current BPE outputs IDs"""
+    """Convert raw sentences into strings of BPE token IDs for TF-IDF. """
     return [" ".join(str(t) for t in bpe.encode(text)) for text in texts]
 
 
@@ -314,14 +314,7 @@ def plot_lr_results(swa, twi):
     plt.show()
 
 
-plot_lr_results(swa_lr, twi_lr)
-#Swahili :k= 1500   n=(2, 4)    c= 0.5   
-#Twi  : k= 1000   n=(2, 4)    c=0.5       
-# helper to sort by count
-def get_count(item):
-    return item[1]
 
-#ERROR ANALYSIS 
 def show_top_features_combined(model, tfidf_vec, char_vec, vocab_size, class_a, class_b, top_n=8):
     """Show the top character ngram features for two intents"""
 
@@ -329,7 +322,7 @@ def show_top_features_combined(model, tfidf_vec, char_vec, vocab_size, class_a, 
     idx_a = classes.index(class_a)
     idx_b = classes.index(class_b)
 
-    # Character ngram features start after the bpe and tfidf blocks
+   
     char_offset = vocab_size + len(tfidf_vec.vocabulary_)
     char_vocab = {v: k for k, v in char_vec.vocabulary_.items()}
     char_coef_a = model.coef_[idx_a][char_offset:]
@@ -345,8 +338,7 @@ def show_top_features_combined(model, tfidf_vec, char_vec, vocab_size, class_a, 
         print(f"Overlapping features that are the course of confusion: {overlap}")
 
 def error_analysis(test_texts, test_labels, result_dict, examples_per_pair=3):
-    """ Identify the three intent pairs most frequently confused by your best model
-on each language"""
+    """ Identify the three intent pairs most frequently confused"""
 
     language_name = result_dict["langauge"]
     test_preds = result_dict["test_preds"]
@@ -393,4 +385,11 @@ on each language"""
 error_analysis(swa_test_texts, swa_test_labels, swa_lr)
 error_analysis(twi_test_texts, twi_test_labels, twi_lr)
 
+plot_lr_results(swa_lr, twi_lr)
+#Swahili :k= 1500   n=(2, 4)    c= 0.5   
+#Twi  : k= 1000   n=(2, 4)    c=0.5       
+# helper to sort by count
+def get_count(item):
+    return item[1]
 
+#ERROR ANALYSIS 
