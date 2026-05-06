@@ -1,1 +1,14 @@
-These are requirements for xxx:
+# NLP Text Classification Requirements
+
+# FILE DESCRIPTIONS:
+# baselines.py: Unigram and Character N-gram baseline models with Logistic Regression
+# nb.py: Naive Bayes text classification with BPE tokenization
+# lr.py: Logistic Regression with combined BPE + TF-IDF + Character N-gram features
+# bpe: the tokeniser 
+# Please Run individual files separately: python baselines.py, python nb.py, python lr.py
+
+
+numpy==1.24.3
+scikit-learn==1.3.0
+scipy==1.11.1
+matplotlib==3.7.2
