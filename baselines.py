@@ -1,9 +1,11 @@
 # Author: Genevieve Chikwanha
 # Date: 01/05/2026
 # Purpose: Baseline
-# Code Inspired By: 
-				# 1. https://github.com/the-utkarshjain/Speech-and-Language-Processing-3rd-Edition-Solutions/blob/main/Chapter%203/3.8.py
-				# 2. https://github.com/daandouwe/char-lm/blob/master/ngram.py
+# Code Adapted From: 
+		# 1. https://github.com/the-utkarshjain/Speech-and-Language-Processing-3rd-Edition-Solutions/blob/main/Chapter%203/3.8.py
+		# 2. Jurafsky, D. and Martin, J. 2026. Speech and Language Processing: An Introduction to Natural Language Processing, 
+		     # Computational Linguistics, and Speech Recognition with Language Models, 3rd edition.		
+		# 3. https://github.com/daandouwe/char-lm/blob/master/ngram.py
 
 import re
 from collections import Counter
@@ -61,10 +63,10 @@ class UnigramModel:
 
 class CharNgramModel:
 
-	def __init__(self, n=2):
+	def __init__(self, n_range=(2, 3)):
 		"""A constructor to create a character n-gram feature extractor to slide a 
-		window of size n over the characters"""
-		self.n = n
+		window of size n (which is a range) over the characters"""
+		self.n_range = n_range
 		self.ngram_counts = {}
 		self.total_ngrams = 0
 		self.vocabulary = []
@@ -76,9 +78,10 @@ class CharNgramModel:
 		lower_sentence = sentence.lower()
 		ngrams = []
 
-		for i in range(len(lower_sentence) - self.n + 1):
-			ngram = lower_sentence[i : i + self.n]
-			ngrams.append(ngram)
+		for n in range(self.n_range[0], self.n_range[1] + 1):
+			for i in range(len(lower_sentence) - n + 1):
+				ngram = lower_sentence[i : i + n]
+				ngrams.append(ngram)
 
 		return ngrams
 
@@ -111,25 +114,23 @@ class CharNgramModel:
 
 		return count_vector
 
-"""Train the Unigram and NGram Baselines on A Logisic Regression Model"""
-
 def tune_and_evaluate(train_texts, train_labels, dev_texts, dev_labels, test_texts, test_labels, is_ngram=True):
-	
-	# Hyperparameters
-	n_values = [2, 3, 4] if is_ngram else [1]
-	c_values = [0.001, 0.01, 0.1, 1.0, 10.0, 100.0]
+	"""Train the Unigram and NGram Baselines on A Logisic Regression Model"""
+
+	# Hyperparameters for c-regularisation and different ngram combinations
+	n_values = [(1, 3), (2, 2), (2, 3), (2, 4), (3, 5), (3, 6)] if is_ngram else [None]
+	c_values = [0.001, 0.01, 0.1, 0.5, 1.0, 5.0, 10.0]
 
 	best_acc = 0
 	best_c = None
 	best_n = None
-
 	best_curve = []
 	best_model = None
 	best_test_vec = None
 
 	# Do a grid search over the n values and the c values
 	for n in n_values:
-		feat_extr = CharNgramModel(n=n) if is_ngram else UnigramModel()
+		feat_extr = CharNgramModel(n_range=n) if is_ngram else UnigramModel()
 		feat_extr.calculate_ngram(train_texts)
 
 		train_vec = feat_extr.count_vectoriser(train_texts)
@@ -140,10 +141,10 @@ def tune_and_evaluate(train_texts, train_labels, dev_texts, dev_labels, test_tex
 		n_is_best = False
 
 		for c in c_values:
-			classifier = LogisticRegression(C=c, max_iter=1000)
+			classifier = LogisticRegression(C=c, max_iter=1000, random_state=42)
 			classifier.fit(train_vec, train_labels)
 
-			# Chech the dev set
+			# Check the dev set
 			prediction = classifier.predict(dev_vec)
 			accuracy = accuracy_score(dev_labels, prediction)
 			current_curve.append(accuracy)
@@ -159,6 +160,7 @@ def tune_and_evaluate(train_texts, train_labels, dev_texts, dev_labels, test_tex
 		if n_is_best:
 			best_curve = current_curve.copy()
 
+	# Get test prediction and accuracy
 	test_pred = best_model.predict(best_test_vec)
 	test_accuracy = accuracy_score(test_labels, test_pred)
 
@@ -167,7 +169,6 @@ def tune_and_evaluate(train_texts, train_labels, dev_texts, dev_labels, test_tex
 	print(f"test acc: {test_accuracy:.4f}\n")
 
 	return best_curve, c_values
-
 
 
 # Load the data for the Swahili dataset
